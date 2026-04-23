@@ -1,19 +1,26 @@
-const { pipeline } = require('@xenova/transformers');
-
-let embedder = null;
-
-const getEmbedder = async () => {
-  if (!embedder) {
-    embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-  }
-  return embedder;
-};
+// Simple TF-IDF style embedding using word frequency vectors
+// No external ML dependencies required
 
 const generateEmbedding = async (text) => {
   try {
-    const embed = await getEmbedder();
-    const output = await embed(text, { pooling: 'mean', normalize: true });
-    return Array.from(output.data);
+    const words = text.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean);
+    const freq = {};
+    words.forEach((w) => { freq[w] = (freq[w] || 0) + 1; });
+
+    // Build a fixed-size vector using hash bucketing (512 dimensions)
+    const size = 512;
+    const vector = new Array(size).fill(0);
+    Object.entries(freq).forEach(([word, count]) => {
+      let hash = 0;
+      for (let i = 0; i < word.length; i++) {
+        hash = (hash * 31 + word.charCodeAt(i)) % size;
+      }
+      vector[Math.abs(hash)] += count / words.length;
+    });
+
+    // Normalize
+    const mag = Math.sqrt(vector.reduce((s, v) => s + v * v, 0));
+    return mag ? vector.map((v) => v / mag) : vector;
   } catch (error) {
     console.error('Embedding error:', error.message);
     return [];
